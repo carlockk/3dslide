@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
-import { Html, MeshTransmissionMaterial, RoundedBox, Text } from "@react-three/drei";
+import { Html, MeshTransmissionMaterial, RoundedBox, Text, useProgress } from "@react-three/drei";
 import * as THREE from "three";
 
 const MENU_ITEMS = ["Work", "Studio", "Contact"];
@@ -669,10 +669,59 @@ function Scene({ progress, activeIndex, isMobile, dragRotation, onPointerDown, o
   );
 }
 
+function LoadingOverlay({ phase, progress }) {
+  const [displayProgress, setDisplayProgress] = useState(0);
+  const progressRef = useRef(0);
+
+  useEffect(() => {
+    let frameId = 0;
+    let lastTime = performance.now();
+
+    const animate = (now) => {
+      const delta = Math.min((now - lastTime) / 1000, 0.1);
+      lastTime = now;
+      const target = phase === "hidden" ? 100 : progress;
+      const next = THREE.MathUtils.damp(progressRef.current, target, 6.5, delta);
+      const clamped = Math.min(next, 100);
+      progressRef.current = clamped;
+      setDisplayProgress(clamped);
+
+      if (phase !== "hidden" || clamped < 99.95) {
+        frameId = window.requestAnimationFrame(animate);
+      }
+    };
+
+    frameId = window.requestAnimationFrame(animate);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [phase, progress]);
+
+  if (phase === "hidden") {
+    return null;
+  }
+
+  const safeProgress = Math.max(0, Math.min(100, Math.round(displayProgress)));
+
+  return (
+    <div className={`loading-overlay ${phase === "dissolving" ? "is-dissolving" : ""}`} aria-hidden="true">
+      <div className="loading-overlay__content">
+        <div className="loading-overlay__track">
+          <span className="loading-overlay__fill" style={{ transform: `scaleX(${displayProgress / 100})` }} />
+        </div>
+        <strong className="loading-overlay__value">{safeProgress}%</strong>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const { active: assetsActive, progress: assetsProgress } = useProgress();
   const viewport = useViewportState();
   const isMobile = viewport.width < 820;
   const [dragRotation, setDragRotation] = useState(0);
+  const [loaderPhase, setLoaderPhase] = useState("loading");
   const dragStateRef = useRef({ active: false, x: 0 });
   const progress = THREE.MathUtils.clamp(viewport.scrollY / viewport.maxScroll, 0, 1);
   const activeIndex = Math.min(SLIDES.length - 1, Math.floor(progress * SLIDES.length));
@@ -696,6 +745,28 @@ export default function App() {
     dragStateRef.current.active = false;
   };
 
+  useEffect(() => {
+    if (loaderPhase !== "loading") {
+      return undefined;
+    }
+
+    if (assetsActive || assetsProgress < 100) {
+      return undefined;
+    }
+
+    const dissolveId = window.setTimeout(() => {
+      setLoaderPhase("dissolving");
+    }, 120);
+    const hideId = window.setTimeout(() => {
+      setLoaderPhase("hidden");
+    }, 760);
+
+    return () => {
+      window.clearTimeout(dissolveId);
+      window.clearTimeout(hideId);
+    };
+  }, [assetsActive, assetsProgress, loaderPhase]);
+
   return (
     <main className="app-shell">
       <section className="hero-shell">
@@ -713,6 +784,7 @@ export default function App() {
           <div className="scene-noise" />
           <div className="scene-vignette" />
         </div>
+        <LoadingOverlay phase={loaderPhase} progress={assetsProgress} />
 
         <header className="topbar">
           <div className="brand-block">
