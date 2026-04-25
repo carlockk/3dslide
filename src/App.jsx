@@ -9,14 +9,14 @@ const SLIDES = [
   {
     title: "Signal Drift",
     label: "Research system",
-    description: "Carrusel 3D que rota sobre su eje con sensación de objeto físico flotando en penumbra.",
+    description: "",
     image: "https://picsum.photos/id/1011/1000/1400",
     accent: "#7dd3fc",
   },
   {
     title: "Quantum Work",
     label: "Spatial design",
-    description: "Panel de vidrio suspendido con imagen encapsulada y lectura limpia, pensado como pieza hero principal.",
+    description: "SPATIAL LAB presenta experiencias digitales, dirección visual y motion systems con una mirada precisa.",
     image: "https://picsum.photos/id/1018/1000/1400",
     accent: "#9ae6b4",
   },
@@ -186,6 +186,7 @@ function GlassPanel({ slide, index, count, activeIndex, progress, dragRotation }
 
           void main() {
             vec2 centered = vUv - 0.5;
+            float sideCurve = smoothstep(0.18, 0.48, abs(centered.x));
             float border =
               1.0 -
               smoothstep(0.0, 0.08, vUv.x) *
@@ -195,7 +196,8 @@ function GlassPanel({ slide, index, count, activeIndex, progress, dragRotation }
             float radius = length(centered);
             float coreLens = smoothstep(0.38, 0.02, radius);
             float rimLens = smoothstep(0.16, 0.92, max(border, radius * 1.35));
-            float lensField = clamp(coreLens * 0.42 + rimLens, 0.0, 1.0);
+            float edgeGlass = clamp(rimLens * 0.6 + sideCurve * 0.9, 0.0, 1.0);
+            float lensField = clamp(coreLens * 0.42 + rimLens * 0.4 + edgeGlass * 0.55, 0.0, 1.0);
             vec2 direction = normalize(centered + vec2(0.0001));
             vec2 drift = vec2(
               sin((vUv.y - 0.5) * 6.0 + uTime * 0.18),
@@ -203,8 +205,9 @@ function GlassPanel({ slide, index, count, activeIndex, progress, dragRotation }
             );
             vec2 refractUv =
               vUv +
-              direction * (-0.006 * coreLens + 0.018 * rimLens) +
-              drift * (0.0008 + rimLens * 0.0025);
+              direction * (-0.006 * coreLens + 0.01 * rimLens) +
+              vec2(sign(centered.x) * edgeGlass * 0.024, 0.0) +
+              drift * (0.0008 + edgeGlass * 0.0028);
             refractUv = clamp(refractUv, 0.02, 0.98);
 
             vec3 sampleA = texture2D(uMap, refractUv).rgb;
@@ -223,15 +226,19 @@ function GlassPanel({ slide, index, count, activeIndex, progress, dragRotation }
             );
 
             float highlightArc = smoothstep(0.62, 0.08, length(centered - vec2(-0.16, -0.18)));
+            float sideHighlight =
+              smoothstep(0.5, 0.1, abs(abs(centered.x) - 0.33)) *
+              smoothstep(0.48, 0.02, 0.5 - abs(centered.y));
             float mask = texture2D(uMask, vUv).r;
-            vec3 color = mix(sampleA, refracted, 0.2 + lensField * 0.22);
-            color = mix(color, spectral, 0.1 + rimLens * 0.14);
+            vec3 color = mix(sampleA, refracted, 0.18 + lensField * 0.26);
+            color = mix(color, spectral, 0.08 + edgeGlass * 0.18);
             color *= 0.25;
-            color += vec3(0.16, 0.18, 0.2) * rimLens * 0.18;
+            color += vec3(0.16, 0.18, 0.2) * rimLens * 0.08;
+            color += vec3(0.26, 0.3, 0.32) * sideHighlight * (0.18 + edgeGlass * 0.26);
             color += vec3(0.22, 0.24, 0.26) * highlightArc * 0.12;
-            color += uAccent * (0.006 + uActive * 0.006) * (0.2 + rimLens * 0.8);
+            color += uAccent * (0.006 + uActive * 0.006) * (0.2 + edgeGlass * 0.7);
             color *= 0.8;
-            float alpha = (0.14 + rimLens * 0.07 + coreLens * 0.025 + uActive * 0.06) * mask;
+            float alpha = (0.14 + rimLens * 0.04 + edgeGlass * 0.04 + coreLens * 0.025 + uActive * 0.06) * mask;
             gl_FragColor = vec4(color, alpha);
           }
         `,
@@ -313,13 +320,13 @@ function GlassPanel({ slide, index, count, activeIndex, progress, dragRotation }
           samples={8}
           resolution={512}
           transmission={1}
-          roughness={0.34}
+          roughness={0.22}
           thickness={0.05}
-          ior={1.08}
-          chromaticAberration={0.006}
+          ior={1.13}
+          chromaticAberration={0.01}
           anisotropy={0.01}
-          distortion={0.05}
-          distortionScale={0.05}
+          distortion={0.065}
+          distortionScale={0.07}
           temporalDistortion={0}
           backsideThickness={0.04}
         />
@@ -347,6 +354,210 @@ function GlassPanel({ slide, index, count, activeIndex, progress, dragRotation }
       >
         {slide.label.toUpperCase()}
       </Text>
+    </group>
+  );
+}
+
+function GroundMist() {
+  const nearMistRef = useRef(null);
+  const farMistRef = useRef(null);
+
+  const mistMaterials = useMemo(
+    () => ({
+        far: new THREE.ShaderMaterial({
+          uniforms: {
+            uTime: { value: 0 },
+            uTint: { value: new THREE.Color("#7cefd0") },
+          },
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          vertexShader: `
+            uniform float uTime;
+            varying vec2 vUv;
+
+            void main() {
+              vUv = uv;
+              vec3 pos = position;
+              float waveA = sin(uv.x * 3.14159 * 2.0 + uTime * 0.22) * 0.04;
+              float waveB = cos(uv.y * 3.14159 * 1.5 - uTime * 0.16) * 0.035;
+              pos.z += (waveA + waveB) * (0.35 + uv.y * 0.65);
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform float uTime;
+            uniform vec3 uTint;
+            varying vec2 vUv;
+
+            float hash(vec2 p) {
+              return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+            }
+
+            float noise(vec2 p) {
+              vec2 i = floor(p);
+              vec2 f = fract(p);
+              float a = hash(i);
+              float b = hash(i + vec2(1.0, 0.0));
+              float c = hash(i + vec2(0.0, 1.0));
+              float d = hash(i + vec2(1.0, 1.0));
+              vec2 u = f * f * (3.0 - 2.0 * f);
+              return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+            }
+
+            float fbm(vec2 p) {
+              float value = 0.0;
+              float amplitude = 0.5;
+              for (int i = 0; i < 4; i++) {
+                value += noise(p) * amplitude;
+                p *= 2.03;
+                amplitude *= 0.5;
+              }
+              return value;
+            }
+
+            void main() {
+              vec2 uv = vUv;
+              vec2 centered = uv - 0.5;
+              float plumeA = fbm(uv * vec2(3.2, 1.5) + vec2(uTime * 0.05, -uTime * 0.025));
+              float plumeB = fbm(uv * vec2(5.4, 2.2) + vec2(-uTime * 0.03, uTime * 0.018));
+              float plume = mix(plumeA, plumeB, 0.45);
+              float pool = smoothstep(0.7, 0.08, length(centered * vec2(1.0, 0.62)));
+              float horizon = smoothstep(1.0, 0.12, uv.y);
+              float wisps = smoothstep(0.42, 0.82, plume) * horizon * pool;
+              float core = smoothstep(0.18, 0.72, plume) * horizon * pool;
+              float alpha = core * 0.2 + wisps * 0.22;
+              vec3 color = uTint * (0.55 + plume * 0.4);
+              color += vec3(0.08, 0.12, 0.11) * wisps;
+              gl_FragColor = vec4(color, alpha);
+            }
+          `,
+        }),
+        near: new THREE.ShaderMaterial({
+          uniforms: {
+            uTime: { value: 0 },
+            uTint: { value: new THREE.Color("#a8fff0") },
+          },
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          vertexShader: `
+            uniform float uTime;
+            varying vec2 vUv;
+
+            void main() {
+              vUv = uv;
+              vec3 pos = position;
+              float waveA = sin(uv.x * 3.14159 * 2.0 + uTime * 0.22) * 0.04;
+              float waveB = cos(uv.y * 3.14159 * 1.5 - uTime * 0.16) * 0.035;
+              pos.z += (waveA + waveB) * (0.35 + uv.y * 0.65);
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform float uTime;
+            uniform vec3 uTint;
+            varying vec2 vUv;
+
+            float hash(vec2 p) {
+              return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+            }
+
+            float noise(vec2 p) {
+              vec2 i = floor(p);
+              vec2 f = fract(p);
+              float a = hash(i);
+              float b = hash(i + vec2(1.0, 0.0));
+              float c = hash(i + vec2(0.0, 1.0));
+              float d = hash(i + vec2(1.0, 1.0));
+              vec2 u = f * f * (3.0 - 2.0 * f);
+              return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+            }
+
+            float fbm(vec2 p) {
+              float value = 0.0;
+              float amplitude = 0.5;
+              for (int i = 0; i < 4; i++) {
+                value += noise(p) * amplitude;
+                p *= 2.03;
+                amplitude *= 0.5;
+              }
+              return value;
+            }
+
+            void main() {
+              vec2 uv = vUv;
+              vec2 centered = uv - 0.5;
+              float plumeA = fbm(uv * vec2(3.2, 1.5) + vec2(uTime * 0.05, -uTime * 0.025));
+              float plumeB = fbm(uv * vec2(5.4, 2.2) + vec2(-uTime * 0.03, uTime * 0.018));
+              float plume = mix(plumeA, plumeB, 0.45);
+              float pool = smoothstep(0.7, 0.08, length(centered * vec2(1.0, 0.62)));
+              float horizon = smoothstep(1.0, 0.12, uv.y);
+              float wisps = smoothstep(0.42, 0.82, plume) * horizon * pool;
+              float core = smoothstep(0.18, 0.72, plume) * horizon * pool;
+              float alpha = core * 0.2 + wisps * 0.22;
+              vec3 color = uTint * (0.55 + plume * 0.4);
+              color += vec3(0.08, 0.12, 0.11) * wisps;
+              gl_FragColor = vec4(color, alpha);
+            }
+          `,
+        }),
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    return () => {
+      mistMaterials.far.dispose();
+      mistMaterials.near.dispose();
+    };
+  }, [mistMaterials]);
+
+  useFrame((state, delta) => {
+    mistMaterials.far.uniforms.uTime.value = state.clock.elapsedTime;
+    mistMaterials.near.uniforms.uTime.value = state.clock.elapsedTime + 1.7;
+
+    if (nearMistRef.current) {
+      nearMistRef.current.rotation.z = THREE.MathUtils.damp(
+        nearMistRef.current.rotation.z,
+        Math.sin(state.clock.elapsedTime * 0.18) * 0.03,
+        2.2,
+        delta,
+      );
+      nearMistRef.current.position.y = THREE.MathUtils.damp(
+        nearMistRef.current.position.y,
+        -2.02 + Math.sin(state.clock.elapsedTime * 0.28) * 0.03,
+        2.4,
+        delta,
+      );
+    }
+
+    if (farMistRef.current) {
+      farMistRef.current.rotation.z = THREE.MathUtils.damp(
+        farMistRef.current.rotation.z,
+        -0.08 + Math.cos(state.clock.elapsedTime * 0.16) * 0.025,
+        2.2,
+        delta,
+      );
+      farMistRef.current.position.y = THREE.MathUtils.damp(
+        farMistRef.current.position.y,
+        -2.12 + Math.cos(state.clock.elapsedTime * 0.22) * 0.025,
+        2.4,
+        delta,
+      );
+    }
+  });
+
+  return (
+    <group>
+      <mesh ref={farMistRef} rotation={[-Math.PI / 2, 0, -0.08]} position={[0, -2.12, -0.25]} renderOrder={-2}>
+        <planeGeometry args={[8.2, 5.4, 1, 1]} />
+        <primitive object={mistMaterials.far} attach="material" />
+      </mesh>
+      <mesh ref={nearMistRef} rotation={[-Math.PI / 2, 0, 0.04]} position={[0, -2.02, 0.28]} renderOrder={-1}>
+        <planeGeometry args={[6.2, 4.4, 1, 1]} />
+        <primitive object={mistMaterials.near} attach="material" />
+      </mesh>
     </group>
   );
 }
@@ -400,10 +611,7 @@ function Carousel({ progress, activeIndex, isMobile, dragRotation }) {
         />
       ))}
 
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -2.1, 0]}>
-        <ringGeometry args={[1.5, 4.2, 96]} />
-        <meshBasicMaterial color="#8be5b4" transparent opacity={0.08} side={THREE.DoubleSide} />
-      </mesh>
+      <GroundMist />
     </group>
   );
 }
@@ -509,7 +717,7 @@ export default function App() {
         <header className="topbar">
           <div className="brand-block">
             <span className="brand-mark">AT</span>
-            <span className="brand-copy">active theory inspired spatial lab</span>
+            <span className="brand-copy">spatial lab</span>
           </div>
           <CapsuleMenu />
         </header>
@@ -526,10 +734,9 @@ export default function App() {
       <section className="content-section content-section--upper">
         <div className="section-copy">
           <p className="section-label">Above the surface</p>
-          <h2>La parte superior queda limpia para navegación, presentación y foco visual.</h2>
+          <h2>A dedicated space for new stories, featured moments and what comes next.</h2>
           <p>
-            El menú puede seguir como barra completa o quedarse como cápsula lateral. Lo dejé en DOM por claridad,
-            accesibilidad y velocidad de iteración, mientras el volumen y la atmósfera viven en WebGL.
+            This section will grow into a living layer for launches, updates and the evolving universe of SPATIAL LAB.
           </p>
         </div>
       </section>
@@ -539,17 +746,16 @@ export default function App() {
         <div className="water-break__glow" />
         <div className="water-break__copy">
           <span>Surface split</span>
-          <strong>el cambio entre secciones queda mejor como corte espacial y parallax que como piso literal</strong>
+          <strong>Step into the next layer of SPATIAL LAB</strong>
         </div>
       </section>
 
       <section className="content-section content-section--lower">
         <div className="section-copy">
           <p className="section-label">Below the surface</p>
-          <h2>La base ya quedó lista para seguir sumando módulos más complejos.</h2>
+          <h2>Selected releases, featured work and new drops live here.</h2>
           <p>
-            El siguiente salto lógico sería convertir este corte en una transición 3D más controlada, con una sola
-            pieza hero fuerte en WebGL y el resto del cambio de sección apoyado por cámara, luz, máscaras y parallax.
+            A curated space for launches, collaborations and the next wave of visual work from SPATIAL LAB.
           </p>
         </div>
       </section>
