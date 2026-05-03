@@ -2,43 +2,108 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
 import { Html, MeshTransmissionMaterial, RoundedBox, Text, useProgress } from "@react-three/drei";
 import * as THREE from "three";
+import slide01 from "./assets/slide-01.jpg";
+import slide02 from "./assets/slide-02.jpg";
+import slide03 from "./assets/slide-03.jpg";
+import slide04 from "./assets/slide-04.jpg";
+import slide05 from "./assets/slide-05.jpg";
 
 const MENU_ITEMS = ["Work", "Studio", "Contact"];
+const FEATURE_MODULES = [
+  {
+    eyebrow: "Launch capsule",
+    title: "Un bloque para highlights, drops o una campaña puntual.",
+    copy: "Sirve para mostrar una novedad fuerte sin competir con el slider: fecha, nombre y una breve narrativa.",
+  },
+  {
+    eyebrow: "Selected frames",
+    title: "Una tira curada de stills, renders o detalles de proceso.",
+    copy: "Si después quieres poblarla, este espacio funciona bien como preview editorial o mini archivo visual.",
+  },
+  {
+    eyebrow: "Studio signal",
+    title: "Noticias cortas, colaboraciones o estado actual del estudio.",
+    copy: "Te permite mantener la home viva sin tener que construir una sección gigante cada vez.",
+  },
+];
+
+const FOOTER_LINKS = ["Instagram", "Behance", "Mail"];
+const SURFACE_SPLIT_ITEMS = ["Selected work", "Motion systems", "Spatial design", "Digital environments"];
+const RELEASE_ITEMS = [
+  {
+    title: "Tidal Lab",
+    meta: "Motion identity / 2026",
+    copy: "Sistema visual con paneles refractivos, atmósfera líquida y narrativa cinematográfica.",
+  },
+  {
+    title: "Glass Archive",
+    meta: "Immersive gallery / 2026",
+    copy: "Exploración curatorial donde imagen, profundidad y distorsión construyen un archivo vivo.",
+  },
+  {
+    title: "North Current",
+    meta: "Prototype direction / 2025",
+    copy: "Base visual lista para crecer con nuevas piezas 3D, motion y capas interactivas.",
+  },
+];
+
+function BrandGlyph() {
+  return (
+    <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="brand-accent" x1="0%" x2="100%" y1="0%" y2="100%">
+          <stop offset="0%" stopColor="#dffef1" />
+          <stop offset="100%" stopColor="#7cefd0" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M19 45.5c0-10.2 6.6-16.2 16-16.2 3.8 0 7.2 1 10.1 3v-6.7c-3-1.5-6.5-2.2-10.4-2.2-13 0-22 8.6-22 22.1V46H19Z"
+        fill="url(#brand-accent)"
+        opacity="0.96"
+      />
+      <path
+        d="M45.1 18.8c0 10.2-6.6 16.2-16 16.2-3.8 0-7.2-1-10.1-3v6.7c3 1.5 6.5 2.2 10.4 2.2 13 0 22-8.6 22-22.1v-.1h-6.3Z"
+        fill="#f4fff9"
+        opacity="0.88"
+      />
+    </svg>
+  );
+}
 
 const SLIDES = [
   {
     title: "Signal Drift",
     label: "Research system",
     description: "",
-    image: "https://picsum.photos/id/1011/1000/1400",
+    image: slide01,
     accent: "#7dd3fc",
   },
   {
     title: "Quantum Work",
     label: "Spatial design",
     description: "SPATIAL LAB presenta experiencias digitales, dirección visual y motion systems con una mirada precisa.",
-    image: "https://picsum.photos/id/1018/1000/1400",
+    image: slide02,
     accent: "#9ae6b4",
   },
   {
     title: "Glass Archive",
     label: "Immersive gallery",
     description: "Las imágenes viven dentro del panel con distorsión suave, niebla y borde refractivo.",
-    image: "https://picsum.photos/id/1020/1000/1400",
+    image: slide03,
     accent: "#f0abfc",
   },
   {
     title: "Tidal Lab",
     label: "Motion identity",
     description: "La superficie inferior actúa como un piso de agua que separa dos mundos visuales.",
-    image: "https://picsum.photos/id/1037/1000/1400",
+    image: slide04,
     accent: "#fdba74",
   },
   {
     title: "North Current",
     label: "Visual prototyping",
     description: "Base lista para sumar más módulos 3D sin cargar el proyecto con GPGPU antes de tiempo.",
-    image: "https://picsum.photos/id/1040/1000/1400",
+    image: slide05,
     accent: "#93c5fd",
   },
 ];
@@ -114,6 +179,55 @@ function useViewportState() {
       }
       window.removeEventListener("resize", schedule);
       window.removeEventListener("scroll", schedule);
+    };
+  }, []);
+
+  return state;
+}
+
+function useScrollIntent(scrollY) {
+  const [state, setState] = useState({
+    compact: false,
+    direction: "idle",
+    impulse: 0,
+  });
+  const previousScrollRef = useRef(scrollY);
+  const releaseTimeoutRef = useRef(0);
+
+  useEffect(() => {
+    const previous = previousScrollRef.current;
+    const delta = scrollY - previous;
+    previousScrollRef.current = scrollY;
+
+    if (Math.abs(delta) < 2) {
+      setState((current) => ({
+        ...current,
+        compact: scrollY > 48,
+      }));
+      return;
+    }
+
+    const nextDirection = delta > 0 ? "down" : "up";
+    const impulse = THREE.MathUtils.clamp(Math.abs(delta) / 80, 0, 1);
+
+    window.clearTimeout(releaseTimeoutRef.current);
+    setState({
+      compact: scrollY > 48,
+      direction: nextDirection,
+      impulse,
+    });
+
+    releaseTimeoutRef.current = window.setTimeout(() => {
+      setState((current) => ({
+        ...current,
+        impulse: 0,
+      }));
+    }, 180);
+  }, [scrollY]);
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(releaseTimeoutRef.current);
     };
   }, []);
 
@@ -630,15 +744,78 @@ function HeroCopy({ activeIndex }) {
   );
 }
 
-function CapsuleMenu() {
+function CapsuleMenu({ scrollIntent }) {
+  const menuClassName = [
+    "capsule-menu",
+    scrollIntent.compact ? "is-compact" : "",
+    scrollIntent.direction === "down" ? "is-scrolling-down" : "",
+    scrollIntent.direction === "up" ? "is-scrolling-up" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <nav className="capsule-menu" aria-label="Main">
+    <nav
+      className={menuClassName}
+      aria-label="Main"
+      style={
+        {
+          "--scroll-impulse": scrollIntent.impulse.toFixed(3),
+        }
+      }
+    >
       {MENU_ITEMS.map((item, index) => (
         <button key={item} type="button" className={`capsule-menu__item ${index === 1 ? "is-center" : ""}`}>
           {item}
         </button>
       ))}
     </nav>
+  );
+}
+
+function FeatureCard({ module }) {
+  const [tiltStyle, setTiltStyle] = useState({
+    "--card-rotate-x": "0deg",
+    "--card-rotate-y": "0deg",
+    "--card-glow-x": "50%",
+    "--card-glow-y": "50%",
+  });
+
+  const handlePointerMove = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const relativeX = (event.clientX - rect.left) / rect.width;
+    const relativeY = (event.clientY - rect.top) / rect.height;
+    const rotateY = (relativeX - 0.5) * 12;
+    const rotateX = (0.5 - relativeY) * 10;
+
+    setTiltStyle({
+      "--card-rotate-x": `${rotateX.toFixed(2)}deg`,
+      "--card-rotate-y": `${rotateY.toFixed(2)}deg`,
+      "--card-glow-x": `${(relativeX * 100).toFixed(2)}%`,
+      "--card-glow-y": `${(relativeY * 100).toFixed(2)}%`,
+    });
+  };
+
+  const handlePointerLeave = () => {
+    setTiltStyle({
+      "--card-rotate-x": "0deg",
+      "--card-rotate-y": "0deg",
+      "--card-glow-x": "50%",
+      "--card-glow-y": "50%",
+    });
+  };
+
+  return (
+    <article
+      className="feature-module"
+      style={tiltStyle}
+      onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerLeave}
+    >
+      <p className="feature-module__eyebrow">{module.eyebrow}</p>
+      <h3>{module.title}</h3>
+      <p>{module.copy}</p>
+    </article>
   );
 }
 
@@ -720,6 +897,7 @@ export default function App() {
   const { active: assetsActive, progress: assetsProgress } = useProgress();
   const viewport = useViewportState();
   const isMobile = viewport.width < 820;
+  const scrollIntent = useScrollIntent(viewport.scrollY);
   const [dragRotation, setDragRotation] = useState(0);
   const [loaderPhase, setLoaderPhase] = useState("loading");
   const dragStateRef = useRef({ active: false, x: 0 });
@@ -788,10 +966,12 @@ export default function App() {
 
         <header className="topbar">
           <div className="brand-block">
-            <span className="brand-mark">AT</span>
+            <span className="brand-mark">
+              <BrandGlyph />
+            </span>
             <span className="brand-copy">spatial lab</span>
           </div>
-          <CapsuleMenu />
+          <CapsuleMenu scrollIntent={scrollIntent} />
         </header>
 
         <HeroCopy activeIndex={activeIndex} />
@@ -811,6 +991,11 @@ export default function App() {
             This section will grow into a living layer for launches, updates and the evolving universe of SPATIAL LAB.
           </p>
         </div>
+        <div className="feature-modules" aria-label="Future content modules">
+          {FEATURE_MODULES.map((module) => (
+            <FeatureCard key={module.eyebrow} module={module} />
+          ))}
+        </div>
       </section>
 
       <section className="water-break">
@@ -818,19 +1003,52 @@ export default function App() {
         <div className="water-break__glow" />
         <div className="water-break__copy">
           <span>Surface split</span>
-          <strong>Step into the next layer of SPATIAL LAB</strong>
+          <strong>A compact transition between the hero field and the editorial layer below.</strong>
+        </div>
+        <div className="water-break__ticker" aria-label="Surface split details">
+          {SURFACE_SPLIT_ITEMS.map((item) => (
+            <span key={item}>{item}</span>
+          ))}
         </div>
       </section>
 
       <section className="content-section content-section--lower">
-        <div className="section-copy">
-          <p className="section-label">Below the surface</p>
-          <h2>Selected releases, featured work and new drops live here.</h2>
-          <p>
-            A curated space for launches, collaborations and the next wave of visual work from SPATIAL LAB.
-          </p>
+        <div className="lower-grid">
+          <div className="release-particles" aria-hidden="true" />
+          <div className="section-copy">
+            <p className="section-label">Below the surface</p>
+            <h2>Selected releases, featured work and new drops live here.</h2>
+            <p>
+              A curated space for launches, collaborations and the next wave of visual work from SPATIAL LAB.
+            </p>
+          </div>
+          <div className="release-column" aria-label="Selected releases">
+            {RELEASE_ITEMS.map((item) => (
+              <article key={item.title} className="release-item">
+                <p className="release-item__meta">{item.meta}</p>
+                <h3>{item.title}</h3>
+                <p>{item.copy}</p>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
+
+      <footer className="site-footer">
+        <div className="site-footer__brand">
+          <span className="site-footer__brand-mark">
+            <BrandGlyph />
+          </span>
+          <span className="site-footer__brand-copy">SPATIAL LAB</span>
+        </div>
+        <div className="site-footer__links" aria-label="Footer">
+          {FOOTER_LINKS.map((item) => (
+            <a key={item} href="/" onClick={(event) => event.preventDefault()}>
+              {item}
+            </a>
+          ))}
+        </div>
+      </footer>
     </main>
   );
 }
